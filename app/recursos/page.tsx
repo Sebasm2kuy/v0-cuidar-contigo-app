@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useChat } from "ai/react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -19,6 +20,11 @@ import {
   Pill,
   Stethoscope,
   Building2,
+  Bot,
+  Loader2,
+  Send,
+  Zap,
+  ExternalLink,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -38,7 +44,32 @@ interface HealthResource {
 export default function RecursosPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedType, setSelectedType] = useState<string>("all")
+  const [selectedUrgency, setSelectedUrgency] = useState<string>("2")
   const [userLocation, setUserLocation] = useState("Montevideo, Uruguay")
+  const [showAIAssistant, setShowAIAssistant] = useState(false)
+
+  // IA Assistant para recursos
+  const {
+    messages: aiMessages,
+    input: aiInput,
+    handleInputChange: handleAIInputChange,
+    handleSubmit: handleAISubmit,
+    isLoading: aiLoading,
+  } = useChat({
+    api: "/api/recursos",
+    initialMessages: [
+      {
+        id: "1",
+        role: "assistant",
+        content:
+          "¡Hola! Soy tu asistente inteligente para recursos de salud en Uruguay. Puedo ayudarte a encontrar exactamente lo que necesitas. ¿Qué tipo de atención médica estás buscando?",
+      },
+    ],
+    body: {
+      location: userLocation,
+      urgency: selectedUrgency,
+    },
+  })
 
   const healthResources: HealthResource[] = [
     {
@@ -147,11 +178,79 @@ export default function RecursosPage() {
 
   const filteredResources = healthResources.filter((resource) => {
     const matchesSearch =
+      searchQuery === "" ||
       resource.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      resource.address.toLowerCase().includes(searchQuery.toLowerCase())
+      resource.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      resource.services.some((service) => service.toLowerCase().includes(searchQuery.toLowerCase()))
+
     const matchesType = selectedType === "all" || resource.type === selectedType
-    return matchesSearch && matchesType
+
+    // Filter by urgency - show emergency services for high urgency
+    const urgencyLevel = Number.parseInt(selectedUrgency)
+    const matchesUrgency = urgencyLevel <= 3 || resource.emergencyServices || resource.isOpen
+
+    return matchesSearch && matchesType && matchesUrgency
   })
+
+  const handleSearch = () => {
+    // Trigger AI search if assistant is active and there's a query
+    if (showAIAssistant && searchQuery.trim()) {
+      handleAISearch(searchQuery)
+    }
+    // The filtering is already handled by the filteredResources computation
+  }
+
+  const openGoogleMaps = (address: string, name: string) => {
+    const encodedAddress = encodeURIComponent(`${name}, ${address}, Uruguay`)
+    const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}&travelmode=driving`
+    window.open(googleMapsUrl, "_blank")
+  }
+
+  const openGoogleMapsView = () => {
+    // Show all filtered resources on map
+    const searchTerm =
+      selectedType === "all"
+        ? "hospitales clínicas farmacias"
+        : selectedType === "hospital"
+          ? "hospitales"
+          : selectedType === "clinic"
+            ? "clínicas"
+            : selectedType === "pharmacy"
+              ? "farmacias"
+              : "emergencias médicas"
+
+    const googleMapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchTerm)}+${encodeURIComponent(userLocation)}`
+    window.open(googleMapsUrl, "_blank")
+  }
+
+  const callPhone = (phone: string) => {
+    window.location.href = `tel:${phone}`
+  }
+
+  const handleAISearch = (query: string) => {
+    setSearchQuery(query)
+    setShowAIAssistant(true)
+    // Enviar consulta a la IA
+    const syntheticEvent = {
+      preventDefault: () => {},
+      target: { value: query },
+    } as any
+    handleAIInputChange(syntheticEvent)
+    setTimeout(() => {
+      handleAISubmit(new Event("submit") as any)
+    }, 100)
+  }
+
+  const quickSearchOptions = [
+    "Necesito una farmacia abierta ahora",
+    "Hospital con emergencias 24 horas",
+    "Clínica para consulta general",
+    "Centro de vacunación",
+    "Laboratorio para análisis",
+    "Atención pediátrica urgente",
+    "Farmacia con medicamentos especiales",
+    "Centro de salud mental",
+  ]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50">
@@ -171,20 +270,129 @@ export default function RecursosPage() {
                   <MapPin className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h1 className="font-bold text-emerald-800">Recursos de Salud</h1>
-                  <p className="text-xs text-emerald-600">Encuentra atención médica cerca de ti</p>
+                  <h1 className="font-bold text-emerald-800">Recursos de Salud IA</h1>
+                  <p className="text-xs text-emerald-600">Búsqueda inteligente y personalizada</p>
                 </div>
               </div>
             </div>
-            <Button variant="outline" size="sm">
-              <Navigation className="w-4 h-4 mr-2" />
-              Mi Ubicación
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant={showAIAssistant ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowAIAssistant(!showAIAssistant)}
+              >
+                <Bot className="w-4 h-4 mr-2" />
+                {showAIAssistant ? "Ocultar IA" : "Asistente IA"}
+              </Button>
+              <Button variant="outline" size="sm">
+                <Navigation className="w-4 h-4 mr-2" />
+                Mi Ubicación
+              </Button>
+            </div>
           </div>
         </div>
       </header>
 
+      {/* Hero Section with AI */}
+      <div className="bg-emerald-600 py-8">
+        <div className="container mx-auto px-4">
+          <div className="relative h-40 rounded-lg overflow-hidden">
+            <img
+              src="/placeholder.svg?height=160&width=800"
+              alt="Recursos de salud inteligentes en Uruguay"
+              className="w-full h-full object-cover opacity-30"
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center text-white">
+                <h2 className="text-2xl font-bold mb-2 flex items-center justify-center gap-2">
+                  <Zap className="w-6 h-6" />
+                  Búsqueda Inteligente de Recursos de Salud
+                </h2>
+                <p className="text-emerald-100">IA que entiende tus necesidades médicas específicas</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="container mx-auto px-4 py-6">
+        {/* AI Assistant Panel */}
+        {showAIAssistant && (
+          <Card className="mb-6 border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center">
+                  <Bot className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-emerald-800">Asistente IA de Recursos de Salud</h3>
+                  <p className="text-sm text-emerald-600">Describe lo que necesitas en lenguaje natural</p>
+                </div>
+              </div>
+
+              {/* Quick Search Options */}
+              <div className="mb-4">
+                <p className="text-sm font-medium text-emerald-700 mb-2">Búsquedas rápidas:</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {quickSearchOptions.map((option, index) => (
+                    <Button
+                      key={index}
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-auto p-2 bg-white hover:bg-emerald-50"
+                      onClick={() => handleAISearch(option)}
+                    >
+                      {option}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* AI Chat Interface */}
+              <div className="bg-white rounded-lg border max-h-96 overflow-y-auto mb-4">
+                <div className="p-4 space-y-3">
+                  {aiMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
+                    >
+                      <div
+                        className={`max-w-[80%] rounded-lg p-3 ${
+                          message.role === "assistant" ? "bg-emerald-100 text-emerald-900" : "bg-emerald-600 text-white"
+                        }`}
+                      >
+                        <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {aiLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-emerald-100 rounded-lg p-3 flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                        <span className="text-sm text-emerald-700">Buscando recursos perfectos para ti...</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* AI Input */}
+              <form onSubmit={handleAISubmit} className="flex gap-2">
+                <Input
+                  placeholder="Ej: 'Necesito un pediatra cerca de Pocitos' o 'Farmacia abierta los domingos'"
+                  value={aiInput}
+                  onChange={handleAIInputChange}
+                  disabled={aiLoading}
+                  className="flex-1"
+                />
+                <Button type="submit" disabled={aiLoading || !aiInput.trim()} className="bg-emerald-600">
+                  {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Location and Search */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-4">
@@ -199,8 +407,21 @@ export default function RecursosPage() {
                 placeholder="Buscar hospitales, clínicas, farmacias..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                className="pl-10 pr-20"
+                onKeyPress={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    handleSearch()
+                  }
+                }}
               />
+              <Button
+                onClick={handleSearch}
+                size="sm"
+                className="absolute right-1 top-1/2 transform -translate-y-1/2 bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Search className="w-4 h-4" />
+              </Button>
             </div>
             <Select value={selectedType} onValueChange={setSelectedType}>
               <SelectTrigger className="w-full md:w-48">
@@ -215,6 +436,18 @@ export default function RecursosPage() {
                 <SelectItem value="emergency">Emergencias</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={selectedUrgency} onValueChange={setSelectedUrgency}>
+              <SelectTrigger className="w-full md:w-48">
+                <SelectValue placeholder="Urgencia" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">No urgente</SelectItem>
+                <SelectItem value="2">Consulta rutinaria</SelectItem>
+                <SelectItem value="3">Moderada</SelectItem>
+                <SelectItem value="4">Urgente</SelectItem>
+                <SelectItem value="5">Emergencia</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -222,8 +455,8 @@ export default function RecursosPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                <Hospital className="w-6 h-6 text-red-600" />
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-2 overflow-hidden">
+                <img src="/placeholder.svg?height=32&width=32" alt="Hospitales" className="w-6 h-6" />
               </div>
               <p className="text-2xl font-bold text-gray-900">12</p>
               <p className="text-sm text-gray-600">Hospitales</p>
@@ -261,10 +494,34 @@ export default function RecursosPage() {
         {/* Results */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Recursos encontrados ({filteredResources.length})</h2>
-            <Button variant="outline" size="sm">
+            <h2 className="text-xl font-semibold text-gray-900">
+              Recursos encontrados ({filteredResources.length})
+              {searchQuery && <span className="text-sm font-normal text-gray-600 ml-2">para "{searchQuery}"</span>}
+              {selectedType !== "all" && (
+                <Badge className="ml-2 bg-blue-100 text-blue-800">
+                  {selectedType === "hospital"
+                    ? "Hospitales"
+                    : selectedType === "clinic"
+                      ? "Clínicas"
+                      : selectedType === "pharmacy"
+                        ? "Farmacias"
+                        : "Emergencias"}
+                </Badge>
+              )}
+              {Number.parseInt(selectedUrgency) >= 4 && (
+                <Badge className="ml-2 bg-red-100 text-red-800">Alta Urgencia</Badge>
+              )}
+              {showAIAssistant && (
+                <Badge className="ml-2 bg-emerald-100 text-emerald-800">
+                  <Zap className="w-3 h-3 mr-1" />
+                  IA Activa
+                </Badge>
+              )}
+            </h2>
+            <Button variant="outline" size="sm" onClick={openGoogleMapsView}>
               <MapPin className="w-4 h-4 mr-2" />
               Ver en Mapa
+              <ExternalLink className="w-3 h-3 ml-1" />
             </Button>
           </div>
 
@@ -313,11 +570,15 @@ export default function RecursosPage() {
                   </div>
 
                   <div className="flex flex-col gap-2 ml-4">
-                    <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => openGoogleMaps(resource.address, resource.name)}
+                    >
                       <Navigation className="w-4 h-4 mr-2" />
                       Ir
                     </Button>
-                    <Button size="sm" variant="outline">
+                    <Button size="sm" variant="outline" onClick={() => callPhone(resource.phone)}>
                       <Phone className="w-4 h-4 mr-2" />
                       Llamar
                     </Button>
@@ -331,11 +592,15 @@ export default function RecursosPage() {
         {filteredResources.length === 0 && (
           <Card className="text-center py-12">
             <CardContent>
-              <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No se encontraron recursos</h3>
-              <p className="text-gray-600">
-                Intenta ajustar tu búsqueda o filtros para encontrar recursos de salud cerca de ti.
+              <Bot className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">¿No encuentras lo que buscas?</h3>
+              <p className="text-gray-600 mb-4">
+                Prueba usando nuestro asistente IA para búsquedas más específicas y personalizadas.
               </p>
+              <Button onClick={() => setShowAIAssistant(true)} className="bg-emerald-600">
+                <Bot className="w-4 h-4 mr-2" />
+                Activar Asistente IA
+              </Button>
             </CardContent>
           </Card>
         )}
